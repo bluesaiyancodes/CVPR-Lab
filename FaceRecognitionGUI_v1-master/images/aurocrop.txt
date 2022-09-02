@@ -1,0 +1,1 @@
+autocrop -i pics -o crop -r reject -H 96 -w 96
