@@ -7,13 +7,12 @@ from PIL import Image
     
 
 # predicting images
-def predictARhinitis(imgPath=""):
+def predictARhinitis(imgPath=r'C:/Users/cvpr/Documents/Bishal/Allergic Rhinitis/Dataset/non_rotate/dataset2/1/19_1_00002_right.tif'):
     model = load_model(r'C:\Users\cvpr\Documents\Bishal\Allergic Rhinitis\ARhinitisModel')
     model.compile(loss='binary_crossentropy',
               optimizer='rmsprop',
               metrics=['accuracy'])
     (img_width, img_height) = (224, 224)
-    imgPath = r'C:/Users/cvpr/Documents/Bishal/Allergic Rhinitis/Dataset/non_rotate/dataset2/1/19_1_00002_right.tif'
     img = image.load_img(imgPath, target_size=(img_width, img_height))
     x = image.img_to_array(img)
     x = np.expand_dims(x, axis=0)
