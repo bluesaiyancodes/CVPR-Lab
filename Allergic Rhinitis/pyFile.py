@@ -1,3 +1,4 @@
+from select import select
 from imutils import paths
 import imutils
 import os
@@ -6,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import timeit
 from datetime import datetime
+from random import shuffle
 
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.model_selection import train_test_split
@@ -19,6 +21,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 
 from ImageCorrection import colorCorrect
+from gradCam2 import  getHeatMap, save_and_display_gradcam
 
 
 class ARModel:
@@ -54,21 +57,51 @@ class ARModel:
         cv2.drawContours(image, cnts, -1, (0,255,0), 1)
         return image
 
+    # TODO customTrainTestSplit Function Code
+    def customTrainTestSplit(self, dataPaths, ratio=0.20):
+        # Shuffle the items in the image data paths
+        shuffle(dataPaths)
+        # re-initalize labels
+        self.labels = []
+        for imagePath in dataPaths:
+            # Extract the class label from file name and append to labels
+            # 파일 이름에서 클래스 레이블을 추출하고 레이블에 추가함
+            label = imagePath.split(os.path.sep)[-2]
+            self.labels.append(label)
+
+        cutIndex = int(len(dataPaths)*ratio)
+        self.testX = dataPaths[:cutIndex]
+        self.testY = self.labels[:cutIndex]
+        self.trainX = dataPaths[cutIndex:]
+        self.trainY = self.labels[cutIndex:]
+
+        self.meta["partitionRatio"] = str(int((1-ratio)*100))+ ":" +str(int(ratio*100))
+        print("[INFO]: Patition Set to - ", self.meta["partitionRatio"])
+        # call Data Preparation again with new values
+
+
+
     def loadImages(self, path=r'C:\Users\cvpr\Documents\Bishal\Allergic Rhinitis\Dataset\rotate', plotType="all", crop = False, correctColor=False, 
                     contours=False, printImgDemo=False):
         print("[INFO]: Trying to Read the images from ", path)
         #  Configure the Image Location            
         # 이미지 위치 구성하기
-        imagePaths = list(paths.list_images(path))
+        self.imagePaths = list(paths.list_images(path))
         # Plot type is used only in title of plot image
         # Adding to metadata
         self.meta["dataInfo"] = plotType
 
         singleImagePrintLabel = []
+
+        # Save meta information for future img manipulation
+
+
+        # Shuffle the items in the image data paths
+        shuffle(self.imagePaths)
         
         
         # Formatting data and labels
-        for imagePath in imagePaths:
+        for imagePath in self.imagePaths:
             # Extract the class label from file name and append to labels
             # 파일 이름에서 클래스 레이블을 추출하고 레이블에 추가함
             label = imagePath.split(os.path.sep)[-2]
@@ -295,6 +328,16 @@ class ARModel:
         plt.imshow(image)
         figName = "[custom]plot-" + text +"-"+datetime.now().strftime('%H-%M-%S')
         plt.savefig(figName)
+
+    def getGradCams(self, type):
+
+        if type=="all":
+            for img in self.imagePaths:
+                heat = getHeatMap(img, self.model, "block14_sepconv2_act")
+                save_and_display_gradcam(img, heat)
+
+
+
 
     def crossValidate(self, path = r'C:\Users\cvpr\Documents\Bishal\Allergic Rhinitis\Dataset', modelType="inception", 
                     dropoutRate=0.5, batchSize=8, epochs=100, learningRate=1e-3, iter=2, dataType="all"):

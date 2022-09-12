@@ -15,7 +15,7 @@ if exeState == "normal":
     model.setDataAugmentation(rotation=20, zoom=0.15, wShift=0.2, hShift=0.2, shear=0.15, hFlip=True)
     model.setPartition(testSize=0.20)
 
-    for currentModel in modelSel:
+    for currentModel in modelOnly:
         model.setBaseModel(currentModel)
         model.setHeadModel(dropoutRate=0.5)
         model.initModel()
@@ -25,6 +25,7 @@ if exeState == "normal":
         model.startTesting()
         model.evalModel()
         model.generatePlot(iter=3)
+        model.getGradCams(type="all")
 
 if exeState == "crossvalidation":
     model = ARModel()
