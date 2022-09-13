@@ -3,6 +3,8 @@ import matplotlib.cm as cm
 import tensorflow as tf
 from datetime import datetime
 from tensorflow import keras
+from IPython.display import Image, display
+
 
 
 def get_img_array(img_path, size):
@@ -51,10 +53,14 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None
     return heatmap.numpy()
 
 
-def save_and_display_gradcam(img_path, heatmap, outPath="gradCam.jpg", alpha=0.4):
-    # Load the original image
-    img = keras.preprocessing.image.load_img(img_path)
-    img = keras.preprocessing.image.img_to_array(img)
+def saveGradCam(image, heatmap, outPath="gradCam.jpg", alpha=0.4, imageType = "path"):
+    
+    if imageType == "path":
+        # Load the original image
+        img = keras.preprocessing.image.load_img(image)
+        img = keras.preprocessing.image.img_to_array(img)
+    elif imageType=="image":
+        img = image
 
     # Rescale heatmap to a range 0-255
     heatmap = np.uint8(255 * heatmap)
@@ -76,27 +82,30 @@ def save_and_display_gradcam(img_path, heatmap, outPath="gradCam.jpg", alpha=0.4
     superimposed_img = keras.preprocessing.image.array_to_img(superimposed_img)
 
     
-    outPath = outPath.split(".")[0] + "-" + datetime.now().strftime('%H-%M-%S') + outPath.split(".")[-1]
-
+    outPath = outPath.split(".")[0] + "-" + datetime.now().strftime('%H-%M-%S') + "." + outPath.split(".")[1]
+    # print(outPath)
     # Save the superimposed image
     superimposed_img.save(outPath)
 
     # Display Grad CAM
-    # display(Image(outPath))
+    #display(Image(outPath))
 
 
-def getHeatMap(imagePath, model, lastConvLayer):
-    preprocess_input = keras.applications.xception.preprocess_input
-    img_array = preprocess_input(get_img_array(imagePath, size=(224,224)))
-    last_conv_layer_name = lastConvLayer
+def getHeatMap(image, model, lastConvLayer, imageType="path"):
+    if imageType == "path":
+        preprocess_input = keras.applications.xception.preprocess_input
+        img_array = preprocess_input(get_img_array(image, size=(224,224)))
+    elif imageType=="image":
+        img_array = image
 
     # Remove last layer's softmax
     model.layers[-1].activation = None
 
     # Print what the top predicted class is
-    preds = model.predict(img_array)
+    # preds = model.predict(img_array)
     #print("Predicted:", decode_predictions(preds, top=1)[0])
 
     # Generate class activation heatmap
-    heatmap = make_gradcam_heatmap(img_array, model, last_conv_layer_name)
+    heatmap = make_gradcam_heatmap(img_array, model, lastConvLayer)
     return heatmap
+

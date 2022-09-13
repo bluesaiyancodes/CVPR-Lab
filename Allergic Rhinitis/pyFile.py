@@ -1,4 +1,3 @@
-from select import select
 from imutils import paths
 import imutils
 import os
@@ -19,9 +18,12 @@ from tensorflow.keras.applications import VGG16, VGG19, InceptionResNetV2, Dense
 from tensorflow.keras.layers import AveragePooling2D, Dropout, Flatten, Dense, Input
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import losses
+
+import tensorflow_addons as tfa
 
 from ImageCorrection import colorCorrect
-from gradCam2 import  getHeatMap, save_and_display_gradcam
+from gradCam2 import  getHeatMap, saveGradCam
 
 
 class ARModel:
@@ -57,32 +59,8 @@ class ARModel:
         cv2.drawContours(image, cnts, -1, (0,255,0), 1)
         return image
 
-    # TODO customTrainTestSplit Function Code
-    def customTrainTestSplit(self, dataPaths, ratio=0.20):
-        # Shuffle the items in the image data paths
-        shuffle(dataPaths)
-        # re-initalize labels
-        self.labels = []
-        for imagePath in dataPaths:
-            # Extract the class label from file name and append to labels
-            # 파일 이름에서 클래스 레이블을 추출하고 레이블에 추가함
-            label = imagePath.split(os.path.sep)[-2]
-            self.labels.append(label)
-
-        cutIndex = int(len(dataPaths)*ratio)
-        self.testX = dataPaths[:cutIndex]
-        self.testY = self.labels[:cutIndex]
-        self.trainX = dataPaths[cutIndex:]
-        self.trainY = self.labels[cutIndex:]
-
-        self.meta["partitionRatio"] = str(int((1-ratio)*100))+ ":" +str(int(ratio*100))
-        print("[INFO]: Patition Set to - ", self.meta["partitionRatio"])
-        # call Data Preparation again with new values
-
-
-
-    def loadImages(self, path=r'C:\Users\cvpr\Documents\Bishal\Allergic Rhinitis\Dataset\rotate', plotType="all", crop = False, correctColor=False, 
-                    contours=False, printImgDemo=False):
+    def loadImages(self, path=r'C:\Users\cvpr\Documents\Bishal\Allergic Rhinitis\Dataset\rotate', plotType="all", classification="multiclass",
+                    crop = False, correctColor=False, contours=False, printImgDemo=False):
         print("[INFO]: Trying to Read the images from ", path)
         #  Configure the Image Location            
         # 이미지 위치 구성하기
@@ -90,6 +68,7 @@ class ARModel:
         # Plot type is used only in title of plot image
         # Adding to metadata
         self.meta["dataInfo"] = plotType
+        self.meta["classification"] = classification
 
         singleImagePrintLabel = []
 
@@ -97,7 +76,7 @@ class ARModel:
 
 
         # Shuffle the items in the image data paths
-        shuffle(self.imagePaths)
+        #shuffle(self.imagePaths)
         
         
         # Formatting data and labels
@@ -105,7 +84,15 @@ class ARModel:
             # Extract the class label from file name and append to labels
             # 파일 이름에서 클래스 레이블을 추출하고 레이블에 추가함
             label = imagePath.split(os.path.sep)[-2]
-            self.labels.append(label)
+
+            # dividing labels based on multiclass or binary
+            if classification=="binary":
+                if label=="2":
+                    self.labels.append("1")
+                else:
+                    self.labels.append(label)
+            else:
+                self.labels.append(label)
             
             # Load the image, swap color channels, and resize it to be a fixed 224x224 pixels while ignoring the aspect ratio
             # 이미지를 로드하고, 컬러 채널을 스왑하고, 가로 세로 비율을 무시하고 고정 224x224 픽셀로 크기를 조정함
@@ -220,7 +207,11 @@ class ARModel:
         self.headModel = Flatten(name="flatten")(self.headModel)
         self.headModel = Dense(64, activation="relu")(self.headModel)
         self.headModel = Dropout(dropoutRate)(self.headModel)
-        self.headModel = Dense(3, activation="softmax")(self.headModel)
+        # TODO multiclass Option Configuration
+        if self.meta["classification"]=="binary":
+            self.headModel = Dense(2, activation="softmax")(self.headModel) 
+        else:  
+            self.headModel = Dense(3, activation="softmax")(self.headModel)
         # Adding to metadata
         self.meta["dropoutRate"] = dropoutRate
     
@@ -252,9 +243,23 @@ class ARModel:
     def compileModel(self, loss="binary_crossentropy"):
         # Compile the Model
         # 모델 컴파일
-        opt = Adam(learning_rate=self.INIT_LR, decay=self.INIT_LR / self.EPOCHS)
-        self.model.compile(loss=loss, optimizer=opt, metrics=["accuracy"])
         print("[INFO]: Compiling Model")
+        opt = Adam(learning_rate=self.INIT_LR, decay=self.INIT_LR / self.EPOCHS)
+
+        if loss=="cce":
+            self.model.compile(loss=losses.CategoricalCrossentropy(), optimizer=opt, metrics=["accuracy"])
+        elif loss=="bce":
+            self.model.compile(loss="binary_crossentropy", optimizer=opt, metrics=["accuracy"])
+        elif loss=="focal":
+            self.model.compile(loss=tfa.losses.SigmoidFocalCrossEntropy(), optimizer=opt, metrics=["accuracy"])
+        elif loss=="scce":
+            self.model.compile(loss="sparse_categorical_crossentropy", optimizer=opt, metrics=["accuracy"])
+        elif loss=="kld":
+            self.model.compile(loss="kullback_leibler_divergence", optimizer=opt, metrics=["accuracy"])
+        else:
+            print(loss+" not available. Proceeding with binary_crossentropy")
+            self.model.compile(loss="binary_crossentropy", optimizer=opt, metrics=["accuracy"])
+        
 
     def startTraining(self):                                                        
         # Train the Network Model
@@ -303,7 +308,7 @@ class ARModel:
         # Adding to metadata
         self.meta["accuracy"] = int(acc*100)
 
-    def generatePlot(self, iter=1):
+    def generatePlot(self, iterInfo=1):
         # plot the training loss and accuracy
         # 플롯 그래프
         print("[INFO]: Plot Generation")
@@ -320,7 +325,7 @@ class ARModel:
         plt.xlabel("Epoch #")
         plt.ylabel("Loss/Accuracy")
         plt.legend(loc="lower left")
-        figName = "[iter-"+str(iter)+"]plot-" + datetime.now().strftime('%H-%M-%S')
+        figName = "[iter-"+str(iterInfo)+"]plot-" + datetime.now().strftime('%H-%M-%S')
         plt.savefig(figName)
 
     def savePlot(self, image, text = ""):
@@ -329,15 +334,28 @@ class ARModel:
         figName = "[custom]plot-" + text +"-"+datetime.now().strftime('%H-%M-%S')
         plt.savefig(figName)
 
-    def getGradCams(self, type):
+    def getGradCams(self, type, alpha=0.4):
 
+        # Set the last convolution layer
+        lastConvLayer = "block14_sepconv2_act"
+
+        # For all images in the dataset
         if type=="all":
             for img in self.imagePaths:
-                heat = getHeatMap(img, self.model, "block14_sepconv2_act")
-                save_and_display_gradcam(img, heat)
+                # get heatmmap
+                heat = getHeatMap(image=img, model=self.model, lastConvLayer=lastConvLayer, imageType="path")
+                #save gradcam
+                saveGradCam(image = img, heatmap = heat, alpha=alpha, imageType="path")
 
-
-
+        if type=="test":
+            for i in range(0, len(self.testX)):
+                testImage = self.testX[i]
+                testImage = np.expand_dims(testImage, axis=0)
+                # Rescale image to a range 0-255
+                testImage = np.uint(255 * testImage)
+                outString = "gradCam-"+str(i)+".jpg"
+                heat = getHeatMap(image=testImage, model=self.model, lastConvLayer=lastConvLayer, imageType="image")
+                saveGradCam(image=testImage[0], heatmap = heat, outPath=outString, alpha=alpha, imageType="image")
 
     def crossValidate(self, path = r'C:\Users\cvpr\Documents\Bishal\Allergic Rhinitis\Dataset', modelType="inception", 
                     dropoutRate=0.5, batchSize=8, epochs=100, learningRate=1e-3, iter=2, dataType="all"):
